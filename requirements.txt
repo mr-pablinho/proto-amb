@@ -7,3 +7,4 @@ pypdf
 python-dotenv
 pandas
 tiktoken
+langchain-chroma
