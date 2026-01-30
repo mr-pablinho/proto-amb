@@ -1,18 +1,14 @@
 import os
 from dotenv import load_dotenv
 
-# Cargar variables de entorno si existen
 load_dotenv()
 
-# Configuración centralizada
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-# MODEL_NAME = "gemini-1.5-pro" # Usamos Pro por la ventana de contexto amplia
-MODEL_NAME = "gemini-2.5-flash" 
 
-# EMBEDDING_MODEL = "models/embedding-001"
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # Modelo ligero, rápido y potente
+MODEL_NAME = "gemini-2.5-pro" 
+FAST_MODEL_NAME = "gemini-2.5-flash"
 
-# Rutas
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"  
+
 LEGAL_DOCS_PATH = "leyes"
 VECTOR_DB_PATH = "chroma_db"
-
