@@ -4,13 +4,12 @@ import google.generativeai as genai
 import config
 from schemas import FileIndex, RoutingDecision, AuditResult
 from pypdf import PdfReader
-from typing import List, Type, Dict, Optional
+from typing import List, Type, Dict, Optional, Tuple, Any
 from rich.console import Console
 
 console = Console()
 
 class RateLimitManager:
-    """Simple rate limiter with exponential backoff."""
     def __init__(self):
         self.last_call = 0
         self.interval = 60 / config.RATE_LIMIT_CALLS
@@ -35,28 +34,43 @@ def extract_text_from_pdf(filepath: str) -> str:
             extract = page.extract_text()
             if extract:
                 text += extract + "\n"
-        return text[:30000] # Truncate for token limits in PoC
+        return text[:30000] 
     except Exception as e:
         return f"Error reading PDF: {e}"
 
 class BaseAgent:
     def __init__(self, model_name):
+        self.model_name = model_name
         self.model = genai.GenerativeModel(model_name)
 
-    def generate_structured(self, prompt: str, schema: Type):
+    def generate_structured(self, prompt: str, schema: Type) -> Tuple[Optional[Any], Dict]:
+        """
+        Returns a tuple: (PydanticObject, UsageDictionary)
+        UsageDictionary contains: {'input_tokens': int, 'output_tokens': int}
+        """
         rate_limiter.wait()
         try:
-            # Using Gemini 1.5 JSON mode
             response = self.model.generate_content(
                 prompt,
                 generation_config={"response_mime_type": "application/json"}
             )
-            return schema.model_validate_json(response.text)
+            
+            # Extract Token Usage
+            usage = {
+                "input_tokens": 0,
+                "output_tokens": 0
+            }
+            
+            # Gemini response object has usage_metadata
+            if response.usage_metadata:
+                usage["input_tokens"] = response.usage_metadata.prompt_token_count
+                usage["output_tokens"] = response.usage_metadata.candidates_token_count
+            
+            return schema.model_validate_json(response.text), usage
+            
         except Exception as e:
             console.print(f"[bold red]API Validation Error:[/bold red] {e}")
-            # Optional: Print the raw text to debug what the AI actually sent
-            # console.print(f"[dim]Raw response: {response.text}[/dim]")
-            return None
+            return None, {"input_tokens": 0, "output_tokens": 0}
 
 class CatalogerAgent(BaseAgent):
     def __init__(self):
@@ -67,7 +81,6 @@ class CatalogerAgent(BaseAgent):
         filename = os.path.basename(filepath)
         content = extract_text_from_pdf(filepath)
         
-        # IMPROVED PROMPT: Explicit JSON structure to prevent nesting errors
         prompt = f"""
         You are a Forensic Document Analyst.
         Target File: {filename}
@@ -82,8 +95,7 @@ class CatalogerAgent(BaseAgent):
         {content}
         
         **STRICT JSON OUTPUT**:
-        You must return a SINGLE JSON object (not a list). Do not nest it under any root key like "data" or "index".
-        
+        Return a SINGLE JSON object.
         Required Structure:
         {{
             "filename": "{filename}",
@@ -93,9 +105,9 @@ class CatalogerAgent(BaseAgent):
             "page_ranges": {{"Topic 1": "1-3"}}
         }}
         """
-        result = self.generate_structured(prompt, FileIndex)
-        # No need to manually set filename if the prompt enforces it, 
-        # but we keep it safe:
+        # We ignore usage for the cataloger in the main log, 
+        # but you could log it if you wanted.
+        result, _ = self.generate_structured(prompt, FileIndex)
         if result: 
             result.filename = filename 
         return result
@@ -104,13 +116,14 @@ class RouterAgent(BaseAgent):
     def __init__(self):
         super().__init__(config.MODEL_ROUTER)
 
-    def route(self, requirement: str, project_index: List[Dict]) -> Optional[RoutingDecision]:
+    def route(self, requirement: str, project_index: List[Dict]) -> Tuple[Optional[RoutingDecision], Dict]:
         index_str = json.dumps(project_index, indent=2)
         
         prompt = f"""
         You are a Strategic Legal Librarian.
         
-        **Goal**: Select the specific PDF files needed to verify this Audit Requirement: "{requirement}".
+        **Goal**: Select the specific PDF files needed to verify this Audit Requirement/Query: 
+        "{requirement}"
         
         **Project Index**:
         {index_str}
@@ -121,7 +134,7 @@ class RouterAgent(BaseAgent):
         3. Be strict on relevance.
         
         **OUTPUT FORMAT**:
-        Return a single JSON object matching this structure exactly:
+        Return a single JSON object:
         {{
             "selected_filenames": ["file1.pdf", "file2.pdf"],
             "reasoning": "Explanation here"
@@ -133,7 +146,7 @@ class AuditorAgent(BaseAgent):
     def __init__(self):
         super().__init__(config.MODEL_AUDITOR)
 
-    def audit(self, requirement: str, legal_context: str, file_contents: Dict[str, str]) -> AuditResult:
+    def audit(self, prompt_input: str, legal_context: str, file_contents: Dict[str, str]) -> Tuple[Optional[AuditResult], Dict]:
         
         combined_evidence = ""
         for fname, text in file_contents.items():
@@ -142,7 +155,7 @@ class AuditorAgent(BaseAgent):
         prompt = f"""
         You are a Senior Environmental Auditor (Ecuador).
         
-        **Task**: Determine compliance for the requirement: "{requirement}".
+        {prompt_input}
         
         **Legal Context (Normativa)**:
         {legal_context}

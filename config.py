@@ -1,17 +1,13 @@
 import os
-from dotenv import load_dotenv  # <--- NEW IMPORT
+from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()  # <--- NEW CALL
+load_dotenv()
 
-# API Configuration
-# Now os.getenv will successfully find the key inside .env
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-
 if not GOOGLE_API_KEY:
-    raise ValueError("GOOGLE_API_KEY not found. Please check your .env file.")
+    raise ValueError("GOOGLE_API_KEY not found in .env")
 
-# Model Definitions
+# Model Definitions (Feb 2026 Standards)
 MODEL_CATALOGER = "gemini-2.5-flash"
 MODEL_ROUTER = "gemini-2.5-flash"
 MODEL_AUDITOR = "gemini-2.5-pro"
@@ -24,6 +20,5 @@ DB_DIR = os.path.join(DATA_DIR, "db")
 INDEX_FILE = os.path.join(DATA_DIR, "project_index.json")
 CHECKLIST_FILE = os.path.join(DATA_DIR, "audit_checklist.json")
 
-# Operational Flags
-FORCE_REINDEX = True  
+FORCE_REINDEX = False  
 RATE_LIMIT_CALLS = 20
