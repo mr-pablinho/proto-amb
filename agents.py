@@ -39,8 +39,10 @@ def extract_text_from_pdf(filepath: str) -> str:
         return f"Error reading PDF: {e}"
 
 class BaseAgent:
-    def __init__(self, model_name):
+    # --- CHANGED: Accept temperature in init ---
+    def __init__(self, model_name, temperature):
         self.model_name = model_name
+        self.temperature = temperature
         self.model = genai.GenerativeModel(model_name)
 
     def generate_structured(self, prompt: str, schema: Type) -> Tuple[Optional[Any], Dict]:
@@ -48,18 +50,19 @@ class BaseAgent:
         usage = {"input_tokens": 0, "output_tokens": 0}
         
         try:
-            # 1. Generate Content
+            # --- CHANGED: Pass temperature to generation_config ---
             response = self.model.generate_content(
                 prompt,
-                generation_config={"response_mime_type": "application/json"}
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "temperature": self.temperature 
+                }
             )
             
-            # 2. Capture Usage (Try Metadata first)
             if response.usage_metadata:
                 usage["input_tokens"] = response.usage_metadata.prompt_token_count
                 usage["output_tokens"] = response.usage_metadata.candidates_token_count
             
-            # 3. Fallback: If usage is 0, count manually
             if usage["input_tokens"] == 0:
                 try:
                     count_resp = self.model.count_tokens(prompt)
@@ -75,9 +78,10 @@ class BaseAgent:
 
 class CatalogerAgent(BaseAgent):
     def __init__(self):
-        super().__init__(config.MODEL_CATALOGER)
+        # Pass Specific Temp
+        super().__init__(config.MODEL_CATALOGER, config.TEMP_CATALOGER)
 
-    def analyze_file(self, filepath: str) -> Optional[FileIndex]:
+    def analyze_file(self, filepath: str) -> Tuple[Optional[FileIndex], Dict]:
         import os
         filename = os.path.basename(filepath)
         content = extract_text_from_pdf(filepath)
@@ -106,14 +110,16 @@ class CatalogerAgent(BaseAgent):
             "page_ranges": {{"Topic 1": "1-3"}}
         }}
         """
-        result, _ = self.generate_structured(prompt, FileIndex)
+        # Return tuple: (Result, Usage)
+        result, usage = self.generate_structured(prompt, FileIndex)
         if result: 
             result.filename = filename 
-        return result
+        return result, usage
 
 class RouterAgent(BaseAgent):
     def __init__(self):
-        super().__init__(config.MODEL_ROUTER)
+        # Pass Specific Temp
+        super().__init__(config.MODEL_ROUTER, config.TEMP_ROUTER)
 
     def route(self, requirement: str, project_index: List[Dict]) -> Tuple[Optional[RoutingDecision], Dict]:
         index_str = json.dumps(project_index, indent=2)
@@ -143,7 +149,8 @@ class RouterAgent(BaseAgent):
 
 class AuditorAgent(BaseAgent):
     def __init__(self):
-        super().__init__(config.MODEL_AUDITOR)
+        # Pass Specific Temp
+        super().__init__(config.MODEL_AUDITOR, config.TEMP_AUDITOR)
 
     def audit(self, prompt_input: str, legal_context: str, file_contents: Dict[str, str]) -> Tuple[Optional[AuditResult], Dict]:
         
