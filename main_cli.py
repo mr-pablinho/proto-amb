@@ -15,19 +15,14 @@ from agents import CatalogerAgent, RouterAgent, AuditorAgent, extract_text_from_
 from rag_engine import LegalRAG
 from logger import AuditLogger
 
-# Initialize UI
 console = Console()
-# Initialize Logger (Now creates 3 files with timestamps)
 audit_logger = AuditLogger()
 
 # --- HELPER: INPUT FOLDER ---
 def get_eia_folder_input():
-    """Asks user for the EIA folder path and validates it."""
     console.rule("[bold cyan]Configuration[/bold cyan]")
     while True:
         folder_path = console.input("[bold green]Enter the path to the folder containing EIA PDFs:[/bold green] ").strip()
-        
-        # Handle quotes if user drags and drops folder in terminal
         folder_path = folder_path.replace('"', '').replace("'", "")
         
         if os.path.isdir(folder_path):
@@ -42,7 +37,7 @@ def get_eia_folder_input():
         else:
             console.print(f"[bold red]Error: Directory not found: {folder_path}[/bold red]")
 
-# --- HELPER: CSV TO JSON CONVERTER ---
+# --- HELPER: CSV TO JSON ---
 def ensure_checklist_exists():
     json_path = config.CHECKLIST_FILE
     csv_path = "Checklist Borrador - Gemini 2.xlsx - Reformula la tabla generada ant.csv" 
@@ -77,20 +72,19 @@ def ensure_checklist_exists():
         console.print(f"[bold red]Error converting CSV: {e}[/bold red]")
         return False
 
-# --- CORE LOGIC ---
+# --- UPDATED: CATALOGING WITH LOGGING ---
+def load_or_build_index(cataloger: CatalogerAgent, pdf_dir: str) -> tuple[list, float]:
+    """
+    Returns (project_index, total_indexing_cost)
+    """
+    total_indexing_cost = 0.0
 
-def load_or_build_index(cataloger: CatalogerAgent, pdf_dir: str) -> list:
-    """Uses the provided pdf_dir instead of config default."""
-    # Note: If PDF folder changes, we should probably force reindex or use separate cache files.
-    # For PoC, we assume if index exists, it matches the project. 
-    # To be safe, let's force reindex if the user changes folders in a real app.
-    
     if os.path.exists(config.INDEX_FILE) and not config.FORCE_REINDEX:
         console.print("[green]✓ Index found. Loading from cache...[/green]")
         try:
             with open(config.INDEX_FILE, "r") as f:
                 data = json.load(f)
-                if data: return data
+                if data: return data, 0.0 # Cost is 0 if cached
         except json.JSONDecodeError:
             pass 
 
@@ -103,39 +97,50 @@ def load_or_build_index(cataloger: CatalogerAgent, pdf_dir: str) -> list:
         for pdf in pdf_files:
             filename = os.path.basename(pdf)
             status.update(f"Scanning content of: {filename}")
-            file_index = cataloger.analyze_file(pdf)
+            
+            # --- UPDATE: Capture Usage ---
+            file_index, usage = cataloger.analyze_file(pdf)
+            
             if file_index:
                 project_index.append(file_index.model_dump())
-                console.print(f"[green]✓ Indexed: {filename}[/green]")
+                
+                # --- UPDATE: Log to CSV ---
+                cost = audit_logger.log_catalog(
+                    filename, "SUCCESS", config.MODEL_CATALOGER, 
+                    usage['input_tokens'], usage['output_tokens']
+                )
+                total_indexing_cost += cost
+                
+                console.print(f"[green]✓ Indexed: {filename} (${cost:.4f})[/green]")
             else:
+                audit_logger.log_catalog(
+                    filename, "FAILED", config.MODEL_CATALOGER, 
+                    usage['input_tokens'], usage['output_tokens']
+                )
                 console.print(f"[red]x Failed to analyze: {filename}[/red]")
     
     with open(config.INDEX_FILE, "w") as f:
         json.dump(project_index, f, indent=2)
     
-    return project_index
+    return project_index, total_indexing_cost
 
 def main():
-    # 1. Start Global Timer
     global_start_time = time.time()
     run_start_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    total_run_cost = 0.0 # Track overall money spent
     
     console.rule("[bold green]MAATE AI: Auditor Ambiental[/bold green]")
     
-    # 2. Get User Input (EIA Folder)
     eia_folder = get_eia_folder_input()
-    # Update config dynamically
     config.PDF_DIR = eia_folder 
     
     configure_genai()
-    
     if not ensure_checklist_exists(): return
 
-    # 3. Initialize RAG & Collect Legal Files Metadata
+    # RAG Setup
     rag = LegalRAG()
     legal_files = glob.glob(os.path.join(config.LEGAL_DIR, "*.pdf"))
     legal_filenames = [os.path.basename(f) for f in legal_files]
-    
     if not legal_files:
         console.print(f"[yellow]Warning: No legal files found in {config.LEGAL_DIR}[/yellow]")
     else:
@@ -151,25 +156,23 @@ def main():
         else:
             console.print("[dim]Legal DB already exists.[/dim]")
     
-    # 4. Agents
     cataloger = CatalogerAgent()
     router = RouterAgent()
     auditor = AuditorAgent()
     
-    # 5. Cataloging Phase
-    project_index = load_or_build_index(cataloger, config.PDF_DIR)
+    # --- UPDATE: Capture Cataloging Cost ---
+    project_index, catalog_cost = load_or_build_index(cataloger, config.PDF_DIR)
+    total_run_cost += catalog_cost
     
-    # 6. Audit Phase
     with open(config.CHECKLIST_FILE, "r", encoding='utf-8') as f:
         checklist = json.load(f)
 
-    # Track processed files for metadata
     processed_files = [entry['filename'] for entry in project_index]
     
     console.print(f"\n[bold]Starting Audit of {len(checklist)} Requirements...[/bold]\n")
 
     for item in checklist:
-        req_start_time = time.time() # Start Req Timer
+        req_start_time = time.time()
         
         req_id = item['id']
         req_text = item['requirement']
@@ -179,7 +182,6 @@ def main():
         console.rule(f"[bold]Auditing: {req_id}[/bold]")
         console.print(f"Requirement: {req_text}")
         
-        # A. Smart Routing
         search_query = f"{req_text} (Evidence needed: {evidence_hint})"
         
         with console.status("[bold cyan]Router Agent...[/bold cyan]"):
@@ -189,7 +191,8 @@ def main():
             console.print("[red]Skipping: No relevant files found.[/red]")
             req_duration = time.time() - req_start_time
             
-            audit_logger.log_requirement(
+            # Log skipped
+            req_cost = audit_logger.log_requirement(
                 req_id, req_text, req_duration,
                 router_data={
                     'model': config.MODEL_ROUTER,
@@ -202,11 +205,11 @@ def main():
                     'input': 0, 'output': 0, 'status': "SKIPPED", 'reasoning': "N/A"
                 }
             )
+            total_run_cost += req_cost
             continue
 
         console.print(f"[dim]Selected: {routing_decision.selected_filenames}[/dim]")
 
-        # B. Context & Content
         legal_context = rag.retrieve_context(req_text)
         file_contents = {}
         for fname in routing_decision.selected_filenames:
@@ -216,7 +219,6 @@ def main():
         
         if not file_contents: continue
 
-        # C. Auditor
         with console.status("[bold red]Auditor Agent...[/bold red]"):
             rich_prompt = f"""
             REQUIREMENT: {req_text}
@@ -225,15 +227,14 @@ def main():
             """
             audit_result, auditor_usage = auditor.audit(rich_prompt, legal_context, file_contents)
 
-        # D. Logging & Display
-        req_duration = time.time() - req_start_time # End Req Timer
+        req_duration = time.time() - req_start_time
 
         if not audit_result:
              console.print("[bold red]Auditor Error.[/bold red]")
              continue
 
-        # Log to CSVs
-        audit_logger.log_requirement(
+        # Log Success
+        req_cost = audit_logger.log_requirement(
             req_id, req_text, req_duration,
             router_data={
                 'model': config.MODEL_ROUTER,
@@ -250,6 +251,7 @@ def main():
                 'reasoning': audit_result.reasoning
             }
         )
+        total_run_cost += req_cost
 
         color = "green" if audit_result.status == "CUMPLE" else "red"
         if audit_result.status == "PARCIAL": color = "yellow"
@@ -271,13 +273,17 @@ def main():
         "run_start": run_start_str,
         "run_end": run_end_str,
         "total_duration_seconds": round(total_duration, 2),
+        "total_cost_estimated_usd": round(total_run_cost, 6), # <--- ADDED TOTAL COST
         "input_folder": eia_folder,
         "files_analyzed": processed_files,
         "legal_files_used": legal_filenames,
         "configuration": {
             "model_cataloger": config.MODEL_CATALOGER,
+            "temp_cataloger": config.TEMP_CATALOGER,
             "model_router": config.MODEL_ROUTER,
+            "temp_router": config.TEMP_ROUTER,
             "model_auditor": config.MODEL_AUDITOR,
+            "temp_auditor": config.TEMP_AUDITOR,
             "rate_limit": config.RATE_LIMIT_CALLS
         }
     }
@@ -285,6 +291,7 @@ def main():
     audit_logger.log_metadata(metadata)
     console.print(f"[bold green]Audit Complete. Logs saved to ./logs/[/bold green]")
     console.print(f"Total Time: {total_duration:.2f} seconds")
+    console.print(f"Total Cost: ${total_run_cost:.4f}")
 
 if __name__ == "__main__":
     main()
