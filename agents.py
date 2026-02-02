@@ -1,3 +1,14 @@
+import warnings
+import os
+
+# --- CRITICAL FIX: Suppress warnings BEFORE importing agents ---
+# This ensures the warning is silenced before the library loads
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
+os.environ["GRPC_VERBOSITY"] = "ERROR" # Silences low-level gRPC logs
+os.environ["GLOG_minloglevel"] = "2"   # Silences TensorFlow/JAX logs often used by GenAI
+# -----------------------------------------------------------
+
 import time
 import json
 import google.generativeai as genai

@@ -13,15 +13,13 @@ class AuditLogger:
     def __init__(self, output_dir="./logs"):
         os.makedirs(output_dir, exist_ok=True)
         
-        # 1. Generate Unique Session Timestamp
         self.session_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # 2. Define File Paths
         self.file_detailed = os.path.join(output_dir, f"audit_detailed_{self.session_ts}.csv")
         self.file_user = os.path.join(output_dir, f"audit_report_USER_{self.session_ts}.csv")
+        self.file_catalog = os.path.join(output_dir, f"audit_catalog_{self.session_ts}.csv")
         self.file_metadata = os.path.join(output_dir, f"run_metadata_{self.session_ts}.json")
         
-        # 3. Define Headers
         self.headers_detailed = [
             "Req_ID", "Requirement_Text", "Duration_Seconds",
             "Router_Model", "Router_Input_Tokens", "Router_Output_Tokens", "Router_Cost", "Router_Files", "Router_Reasoning",
@@ -29,27 +27,27 @@ class AuditLogger:
             "Audit_Status", "Audit_Reasoning", "Total_Req_Cost"
         ]
         
-        # Simplified headers for the client
         self.headers_user = [
             "Req_ID", "Requirement_Text", "Duration_Seconds",
             "Selected_Files", "Audit_Status", "Audit_Reasoning"
         ]
 
+        self.headers_catalog = [
+            "Timestamp", "Filename", "Status", "Model", 
+            "Input_Tokens", "Output_Tokens", "Cost"
+        ]
+
         self._initialize_csvs()
 
     def _initialize_csvs(self):
-        # Init Detailed Log
         with open(self.file_detailed, mode='w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(self.headers_detailed)
-            
-        # Init User Log
+            csv.writer(f).writerow(self.headers_detailed)
         with open(self.file_user, mode='w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(self.headers_user)
+            csv.writer(f).writerow(self.headers_user)
+        with open(self.file_catalog, mode='w', newline='', encoding='utf-8') as f:
+            csv.writer(f).writerow(self.headers_catalog)
 
     def log_metadata(self, data: dict):
-        """Writes run configuration and stats to a JSON file."""
         with open(self.file_metadata, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
 
@@ -63,13 +61,25 @@ class AuditLogger:
             cost = (in_m * PRICE_PRO_INPUT) + (out_m * PRICE_PRO_OUTPUT)
         return cost
 
+    def log_catalog(self, filename, status, model_name, input_tok, output_tok):
+        cost = self.calculate_cost(model_name, input_tok, output_tok)
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        
+        row = [
+            timestamp, filename, status, model_name,
+            input_tok, output_tok, f"${cost:.6f}"
+        ]
+        
+        with open(self.file_catalog, mode='a', newline='', encoding='utf-8') as f:
+            csv.writer(f).writerow(row)
+        
+        return cost 
+
     def log_requirement(self, req_id, req_text, duration, router_data, auditor_data):
-        # Calculate Costs
         r_cost = self.calculate_cost(router_data['model'], router_data['input'], router_data['output'])
         a_cost = self.calculate_cost(auditor_data['model'], auditor_data['input'], auditor_data['output'])
         total_cost = r_cost + a_cost
 
-        # --- ROW FOR DETAILED LOG ---
         row_detailed = [
             req_id,
             req_text,
@@ -89,22 +99,20 @@ class AuditLogger:
             f"${total_cost:.6f}"
         ]
 
-        # --- ROW FOR USER LOG (Clean) ---
         row_user = [
             req_id,
             req_text,
             f"{duration:.2f}",
-            router_data['files'], # Selected Files
+            router_data['files'],
             auditor_data['status'],
             auditor_data['reasoning']
         ]
 
-        # Write to Detailed
         with open(self.file_detailed, mode='a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(row_detailed)
+            csv.writer(f).writerow(row_detailed)
 
-        # Write to User Report
         with open(self.file_user, mode='a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(row_user)
+            csv.writer(f).writerow(row_user)
+            
+        # --- FIX IS HERE: RETURN THE COST ---
+        return total_cost

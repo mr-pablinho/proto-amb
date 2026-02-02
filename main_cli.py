@@ -1,4 +1,13 @@
+import warnings
 import os
+
+# --- CRITICAL FIX: Suppress warnings BEFORE importing agents ---
+# This ensures the warning is silenced before the library loads
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
+os.environ["GRPC_VERBOSITY"] = "ERROR" # Silences low-level gRPC logs
+os.environ["GLOG_minloglevel"] = "2"   # Silences TensorFlow/JAX logs often used by GenAI
+# -----------------------------------------------------------
 import json
 import glob
 import csv
@@ -14,6 +23,8 @@ import config
 from agents import CatalogerAgent, RouterAgent, AuditorAgent, extract_text_from_pdf, configure_genai
 from rag_engine import LegalRAG
 from logger import AuditLogger
+
+
 
 console = Console()
 audit_logger = AuditLogger()
@@ -111,7 +122,8 @@ def load_or_build_index(cataloger: CatalogerAgent, pdf_dir: str) -> tuple[list, 
                 )
                 total_indexing_cost += cost
                 
-                console.print(f"[green]✓ Indexed: {filename} (${cost:.4f})[/green]")
+                # console.print(f"[green]✓ Indexed: {filename} (${cost:.4f})[/green]")
+                console.print(f"[green]✓ Indexed: {filename}[/green]")
             else:
                 audit_logger.log_catalog(
                     filename, "FAILED", config.MODEL_CATALOGER, 
