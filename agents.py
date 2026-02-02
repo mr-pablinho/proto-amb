@@ -44,33 +44,34 @@ class BaseAgent:
         self.model = genai.GenerativeModel(model_name)
 
     def generate_structured(self, prompt: str, schema: Type) -> Tuple[Optional[Any], Dict]:
-        """
-        Returns a tuple: (PydanticObject, UsageDictionary)
-        UsageDictionary contains: {'input_tokens': int, 'output_tokens': int}
-        """
         rate_limiter.wait()
+        usage = {"input_tokens": 0, "output_tokens": 0}
+        
         try:
+            # 1. Generate Content
             response = self.model.generate_content(
                 prompt,
                 generation_config={"response_mime_type": "application/json"}
             )
             
-            # Extract Token Usage
-            usage = {
-                "input_tokens": 0,
-                "output_tokens": 0
-            }
-            
-            # Gemini response object has usage_metadata
+            # 2. Capture Usage (Try Metadata first)
             if response.usage_metadata:
                 usage["input_tokens"] = response.usage_metadata.prompt_token_count
                 usage["output_tokens"] = response.usage_metadata.candidates_token_count
             
+            # 3. Fallback: If usage is 0, count manually
+            if usage["input_tokens"] == 0:
+                try:
+                    count_resp = self.model.count_tokens(prompt)
+                    usage["input_tokens"] = count_resp.total_tokens
+                except:
+                    pass
+
             return schema.model_validate_json(response.text), usage
             
         except Exception as e:
-            console.print(f"[bold red]API Validation Error:[/bold red] {e}")
-            return None, {"input_tokens": 0, "output_tokens": 0}
+            console.print(f"[bold red]API Error:[/bold red] {e}")
+            return None, usage
 
 class CatalogerAgent(BaseAgent):
     def __init__(self):
@@ -105,8 +106,6 @@ class CatalogerAgent(BaseAgent):
             "page_ranges": {{"Topic 1": "1-3"}}
         }}
         """
-        # We ignore usage for the cataloger in the main log, 
-        # but you could log it if you wanted.
         result, _ = self.generate_structured(prompt, FileIndex)
         if result: 
             result.filename = filename 

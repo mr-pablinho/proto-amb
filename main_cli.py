@@ -11,11 +11,11 @@ from rich import box
 import config
 from agents import CatalogerAgent, RouterAgent, AuditorAgent, extract_text_from_pdf, configure_genai
 from rag_engine import LegalRAG
-from logger import AuditLogger # <--- NEW IMPORT
+from logger import AuditLogger
 
-# Initialize UI
+# Initialize UI and Logger
 console = Console()
-audit_logger = AuditLogger() # <--- INITIALIZE LOGGER
+audit_logger = AuditLogger()
 
 # --- HELPER: CSV TO JSON CONVERTER ---
 def ensure_checklist_exists():
@@ -24,6 +24,7 @@ def ensure_checklist_exists():
     from the specific CSV file uploaded by the user.
     """
     json_path = config.CHECKLIST_FILE
+    # Update this filename if your CSV name changes
     csv_path = "Checklist Borrador - Gemini 2.xlsx - Reformula la tabla generada ant.csv" 
     
     if os.path.exists(json_path):
@@ -37,11 +38,12 @@ def ensure_checklist_exists():
     
     checklist = []
     try:
-        with open(csv_path, mode='r', encoding='utf-8-sig') as csvfile: 
+        with open(csv_path, mode='r', encoding='utf-8-sig') as csvfile: # utf-8-sig handles Excel CSVs
             reader = csv.DictReader(csvfile)
             for i, row in enumerate(reader):
+                # Map CSV columns to JSON fields
                 req_text = row.get('Requisito', '').strip()
-                if not req_text: continue 
+                if not req_text: continue # Skip empty rows
 
                 item = {
                     "id": f"REQ-{i+1:03d}",
@@ -73,7 +75,7 @@ def load_or_build_index(cataloger: CatalogerAgent) -> list:
                 data = json.load(f)
                 if data: return data
         except json.JSONDecodeError:
-            pass 
+            pass # Fall through to re-index
 
     console.print("[yellow]! Index missing or refresh requested. Starting Deep Content Scan...[/yellow]")
     
@@ -84,6 +86,7 @@ def load_or_build_index(cataloger: CatalogerAgent) -> list:
 
     project_index = []
     
+    # We use a status spinner for the active work, but print permanent logs for success
     with console.status("[bold blue]Cataloger Agent working...") as status:
         for pdf in pdf_files:
             filename = os.path.basename(pdf)
@@ -124,22 +127,26 @@ def main():
     console.rule("[bold green]MAATE AI: Auditor Ambiental[/bold green]")
     configure_genai()
     
+    # 0. Prepare Data
     if not ensure_checklist_exists():
         return
 
-    # 1. Initialize RAG
+    # 1. Initialize RAG (Legal Context)
     rag = LegalRAG()
     legal_files = glob.glob(os.path.join(config.LEGAL_DIR, "*.pdf"))
     
     if not legal_files:
         console.print(f"[yellow]Warning: No legal files found in {config.LEGAL_DIR}[/yellow]")
     else:
+        # Only ingest if database is empty (or if you manually cleared data/db)
         if rag.collection.count() == 0:
             console.print(f"[blue]Ingesting {len(legal_files)} Legal Framework files...[/blue]")
+            
             with console.status("[bold blue]Indexing Legal Documents...[/bold blue]"):
                 for legal_path in legal_files:
                     filename = os.path.basename(legal_path)
                     legal_text_raw = extract_text_from_pdf(legal_path)
+                    
                     if len(legal_text_raw) > 100:
                         rag.ingest_text(legal_text_raw, source_name=filename)
                         console.print(f"[green]✓ Indexed: {filename}[/green]")
@@ -182,20 +189,23 @@ def main():
             # Tuple unpacking: result, usage
             routing_decision, router_usage = router.route(search_query, project_index)
         
+        # Handle skipped/failed routing
         if not routing_decision or not routing_decision.selected_filenames:
             console.print("[red]No relevant files found in index. Skipping.[/red]")
-            # Log skipped requirement
+            
+            # LOGGING: Skipped
             audit_logger.log_requirement(
                 req_id, req_text,
                 router_data={
                     'model': config.MODEL_ROUTER,
                     'input': router_usage.get('input_tokens', 0),
                     'output': router_usage.get('output_tokens', 0),
-                    'files': "None"
+                    'files': "None",
+                    'reasoning': "No relevant files found (Filtered by Router)"
                 },
                 auditor_data={
                     'model': config.MODEL_AUDITOR,
-                    'input': 0, 'output': 0, 'status': "SKIPPED", 'reasoning': "No files found"
+                    'input': 0, 'output': 0, 'status': "SKIPPED", 'reasoning': "N/A"
                 }
             )
             continue
@@ -204,6 +214,7 @@ def main():
 
         # B. Context & Content Loading
         legal_context = rag.retrieve_context(req_text)
+        
         file_contents = {}
         for fname in routing_decision.selected_filenames:
             path = os.path.join(config.PDF_DIR, fname)
@@ -217,10 +228,15 @@ def main():
 
         # C. Audit Execution
         with console.status("[bold red]Auditor Agent: Verifying compliance...[/bold red]"):
+            
             rich_prompt = f"""
             REQUIREMENT: {req_text}
-            STRICT COMPLIANCE CRITERIA: {criteria}
-            EXPECTED EVIDENCE DESCRIPTION: {evidence_hint}
+            
+            STRICT COMPLIANCE CRITERIA:
+            {criteria}
+            
+            EXPECTED EVIDENCE DESCRIPTION:
+            {evidence_hint}
             """
             
             # Tuple unpacking: result, usage
@@ -230,14 +246,15 @@ def main():
              console.print("[bold red]Error: Auditor failed. Skipping.[/bold red]")
              continue
 
-        # LOGGING
+        # LOGGING: Success
         audit_logger.log_requirement(
             req_id, req_text,
             router_data={
                 'model': config.MODEL_ROUTER,
                 'input': router_usage.get('input_tokens', 0),
                 'output': router_usage.get('output_tokens', 0),
-                'files': str(routing_decision.selected_filenames)
+                'files': str(routing_decision.selected_filenames),
+                'reasoning': routing_decision.reasoning
             },
             auditor_data={
                 'model': config.MODEL_AUDITOR,
