@@ -1,5 +1,36 @@
+# --- Security ---
 .env
-.venv
+.env.local
+config_local.py
+
+# --- Python ---
+__pycache__/
 *.pyc
-.idea
-/chroma_db/*
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# --- Data & Logs ---
+# Ignore the actual PDFs (too large for git)
+data/proyecto_eia/*.pdf
+data/leyes/*.pdf
+
+# Ignore the Vector DB (re-generated locally)
+data/db/
+
+# Ignore the cached index (optional, but good practice to keep repo clean)
+data/project_index.json
+
+# Ignore the generated logs
+logs/
+*.log
+
+# Ignore the converted checklist (keep the CSV source, ignore the JSON output)
+data/audit_checklist.json
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
