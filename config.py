@@ -14,7 +14,8 @@ MODEL_AUDITOR = "gemini-2.5-pro"
 
 # Paths
 DATA_DIR = "./data"
-PDF_DIR = os.path.join(DATA_DIR, "proyecto_eia")
+# This is now a default, but main_cli.py will overwrite it with User Input
+PDF_DIR = os.path.join(DATA_DIR, "proyecto_eia") 
 LEGAL_DIR = os.path.join(DATA_DIR, "leyes")
 DB_DIR = os.path.join(DATA_DIR, "db")
 INDEX_FILE = os.path.join(DATA_DIR, "project_index.json")
