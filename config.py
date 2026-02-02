@@ -12,9 +12,15 @@ MODEL_CATALOGER = "gemini-2.5-flash"
 MODEL_ROUTER = "gemini-2.5-flash"
 MODEL_AUDITOR = "gemini-2.5-pro"
 
+# --- NEW: INDIVIDUAL TEMPERATURES ---
+# 0.0 = Deterministic (Best for extraction/logic)
+# 1.0 = Creative
+TEMP_CATALOGER = 0.0
+TEMP_ROUTER = 0.0
+TEMP_AUDITOR = 0.0
+
 # Paths
 DATA_DIR = "./data"
-# This is now a default, but main_cli.py will overwrite it with User Input
 PDF_DIR = os.path.join(DATA_DIR, "proyecto_eia") 
 LEGAL_DIR = os.path.join(DATA_DIR, "leyes")
 DB_DIR = os.path.join(DATA_DIR, "db")
