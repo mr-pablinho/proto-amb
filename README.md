@@ -28,7 +28,6 @@ It uses a "Content-First" architecture to ignore generic filenames and index the
 │   ├── proyecto_eia/        # Place your EIA PDF files here
 │   ├── leyes/               # Place Legal PDFs (COA, TULSMA) here
 │   ├── db/                  # ChromaDB Vector Store (Auto-generated)
-│   ├── cheklist/            # Place your Checklist CSV file here
 │   ├── project_index.json   # Cached Deep Content Index (Auto-generated)
 │   └── audit_checklist.json # The requirements to audit (Auto-generated from CSV)
 ├── logs/                   # Detailed CSV logs and Metadata reports
