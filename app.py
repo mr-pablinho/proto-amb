@@ -4,6 +4,7 @@ import tempfile
 import json
 import glob
 import time
+import datetime
 import pandas as pd
 import random
 
@@ -166,6 +167,9 @@ if start_btn:
     router = RouterAgent()
     auditor = AuditorAgent()
     rag = LegalRAG()
+    audit_logger = AuditLogger()
+    total_run_cost = 0.0
+    run_start_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     # Contenedores para Pasos (Persistentes)
     step1_container = st.empty()
@@ -199,9 +203,19 @@ if start_btn:
                         st.caption(f"└─ Recuperado de memoria caché.")
                         project_index.append(local_cache[fname])
                     else:
-                        f_index, _ = cataloger.analyze_file(pdf_path)
+                        f_index, usage = cataloger.analyze_file(pdf_path)
                         if f_index:
                             project_index.append(f_index.model_dump())
+                            cost = audit_logger.log_catalog(
+                                fname, "SUCCESS", config.MODEL_CATALOGER,
+                                usage['input_tokens'], usage['output_tokens']
+                            )
+                            total_run_cost += cost
+                        else:
+                            audit_logger.log_catalog(
+                                fname, "FAILED", config.MODEL_CATALOGER,
+                                0, 0
+                            )
                 st.session_state.project_index = project_index
                 st.write(f"✅ Indexación terminada ({len(project_index)} archivos).")
                 s2.update(label="🔍 Documentos Indexados", state="complete", expanded=False)
@@ -220,14 +234,30 @@ if start_btn:
                     criteria = item.get('criteria', 'N/A')
                     evidence_hint = item.get('expected_evidence', 'N/A')
 
+                    req_start_time = time.time()
                     s3.update(label=f"⚖️ Auditando {i+1}/{total}: {req_id}", state="running")
                     st.markdown(f"**{req_id}:** {req_text[:60]}...")
                     
                     search_query = f"{req_text} (Evidence needed: {evidence_hint})"
-                    routing_decision, _ = router.route(search_query, project_index)
+                    routing_decision, router_usage = router.route(search_query, project_index)
                     
                     if not routing_decision or not routing_decision.selected_filenames:
                         st.caption("⚠️ Sin archivos relevantes.")
+                        req_duration = time.time() - req_start_time
+                        cost = audit_logger.log_requirement(
+                            req_id, req_text, req_duration,
+                            router_data={
+                                'model': config.MODEL_ROUTER,
+                                'input': router_usage.get('input_tokens', 0),
+                                'output': router_usage.get('output_tokens', 0),
+                                'files': "None", 'reasoning': "No relevant files found"
+                            },
+                            auditor_data={
+                                'model': config.MODEL_AUDITOR,
+                                'input': 0, 'output': 0, 'status': "SKIPPED", 'reasoning': "N/A"
+                            }
+                        )
+                        total_run_cost += cost
                         st.session_state.audit_results.append({
                             "id": req_id, "requirement": req_text, "status": "SKIPPED",
                             "reasoning": "No se encontraron documentos relacionados.",
@@ -244,9 +274,28 @@ if start_btn:
 
                     if file_contents:
                         rich_prompt = f"REQUIREMENT: {req_text}\nCRITERIA: {criteria}\nEVIDENCE: {evidence_hint}"
-                        audit_result, _ = auditor.audit(rich_prompt, legal_context, file_contents)
+                        audit_result, auditor_usage = auditor.audit(rich_prompt, legal_context, file_contents)
 
+                        req_duration = time.time() - req_start_time
                         if audit_result:
+                            cost = audit_logger.log_requirement(
+                                req_id, req_text, req_duration,
+                                router_data={
+                                    'model': config.MODEL_ROUTER,
+                                    'input': router_usage.get('input_tokens', 0),
+                                    'output': router_usage.get('output_tokens', 0),
+                                    'files': str(routing_decision.selected_filenames),
+                                    'reasoning': routing_decision.reasoning
+                                },
+                                auditor_data={
+                                    'model': config.MODEL_AUDITOR,
+                                    'input': auditor_usage.get('input_tokens', 0),
+                                    'output': auditor_usage.get('output_tokens', 0),
+                                    'status': audit_result.status,
+                                    'reasoning': audit_result.reasoning
+                                }
+                            )
+                            total_run_cost += cost
                             icon = "✅" if audit_result.status == "CUMPLE" else "❌"
                             st.caption(f"└─ Resultado: {icon} {audit_result.status}")
                             st.session_state.audit_results.append({
@@ -256,8 +305,32 @@ if start_btn:
                                 "files_used": routing_decision.selected_filenames
                             })
                 
+                # Metadata Final
                 st.session_state.total_time = time.time() - start_time
                 st.session_state.processing_complete = True
+                
+                run_end_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                legal_filenames = [os.path.basename(f) for f in glob.glob(os.path.join(config.LEGAL_DIR, "*.pdf"))]
+                processed_files = [entry['filename'] for entry in st.session_state.project_index]
+                
+                metadata = {
+                    "run_start": run_start_str,
+                    "run_end": run_end_str,
+                    "total_duration_seconds": round(st.session_state.total_time, 2),
+                    "total_cost_estimated_usd": round(total_run_cost, 6),
+                    "input_folder": "Streamlit Upload",
+                    "files_analyzed": processed_files,
+                    "legal_files_used": legal_filenames,
+                    "configuration": {
+                        "model_cataloger": config.MODEL_CATALOGER,
+                        "model_router": config.MODEL_ROUTER,
+                        "model_auditor": config.MODEL_AUDITOR,
+                        "rate_limit": config.RATE_LIMIT_CALLS,
+                        "sampling_limit": config.AUDIT_CHECKLIST_LIMIT
+                    }
+                }
+                audit_logger.log_metadata(metadata)
+                
                 s3.update(label="⚖️ Auditoría Finalizada", state="complete", expanded=False)
     except Exception as e:
         st.error(f"Error crítico durante el proceso: {e}")
