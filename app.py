@@ -14,14 +14,57 @@ from logger import AuditLogger
 
 # --- CONFIGURACIÓN & SETUP ---
 st.set_page_config(
-    page_title="MAATE AI | Auditor Ambiental",
-    page_icon="🌿",
-    layout="centered" 
+    page_title="🤖 MAATE AI",
+    layout="centered"
 )
 
-# Estilos CSS generales (solo limpieza básica, sin hacks de traducción)
+# --- SISTEMA DE TIPOGRAFÍA (VERSIÓN SEGURA) ---
 st.markdown("""
 <style>
+    /* 1. IMPORTAR FUENTES */
+    @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+    /* 2. APLICAR FUENTES SOLO A ELEMENTOS DE TEXTO (NO A ICONOS) */
+    
+    /* Cuerpo y textos generales */
+    html, body, p, li, label, .stMarkdown, .stText {
+        font-family: 'Roboto', sans-serif !important;
+    }
+    
+    /* Inputs y Botones */
+    input, textarea, select, button {
+        font-family: 'Roboto', sans-serif !important;
+    }
+    
+    /* Encabezados */
+    h1, h2, h3, h4, h5, h6, .stTitle {
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.5px;
+    }
+
+    /* 3. LOGS Y CÓDIGO (Roboto Mono) */
+    code, .stCodeBlock, .stJson {
+        font-family: 'Roboto Mono', monospace !important;
+    }
+    
+    /* Widget de Estado (Logs) - Específico */
+    div[data-testid="stStatusWidget"] div p {
+        font-family: 'Roboto Mono', monospace !important;
+        font-size: 0.9em !important;
+    }
+    /* Título del Widget de Estado */
+    div[data-testid="stStatusWidget"] header p {
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 600 !important;
+    }
+
+    /* 4. MÉTRICAS (Números grandes) */
+    [data-testid="stMetricValue"] {
+        font-family: 'Space Grotesk', sans-serif !important;
+    }
+
+    /* LIMPIEZA */
     .stDeployButton {display:none;}
     footer {visibility: hidden;}
     #MainMenu {visibility: hidden;}
@@ -71,9 +114,8 @@ def load_local_cache():
 # --- INTERFAZ DE USUARIO ---
 
 # Encabezado
-st.image("https://cdn-icons-png.flaticon.com/512/2913/2913465.png", width=60)
-st.title("MAATE AI: Auditoría Ambiental")
-st.markdown("**Sistema de Verificación Normativa (COA/TULSMA)**")
+st.title("🤖 MAATE AI (PoC)")
+st.subheader("**Sistema Automatizado de Verificación Normativa**")
 
 # 1. CARGA DE ARCHIVOS
 st.divider()
@@ -84,7 +126,6 @@ if not config.GOOGLE_API_KEY:
     st.error("⚠️ Falta configuración de API Key en .env")
     st.stop()
 
-# Widget nativo (El label está en español, el interior en inglés estándar)
 uploaded_files = st.file_uploader(
     "Seleccione los archivos PDF (Plan de Manejo, Anexos, Fichas):", 
     type=["pdf"], 
@@ -121,7 +162,7 @@ if start_btn:
             # A. MARCO LEGAL
             current_action_display.info("📚 Paso 1/3: Verificando Normativa Legal...")
             status_box.update(label="📚 Cargando contexto legal...", state="running")
-            time.sleep(0.5)
+            time.sleep(2)
 
             if rag.collection.count() == 0:
                 legal_files = glob.glob(os.path.join(config.LEGAL_DIR, "*.pdf"))
@@ -141,7 +182,7 @@ if start_btn:
             for pdf_path in saved_paths:
                 fname = os.path.basename(pdf_path)
                 st.write(f"Analizando: **{fname}**")
-                time.sleep(0.5) # Pausa visual
+                time.sleep(2)
 
                 if fname in local_cache:
                     st.caption(f"└─ Recuperado de memoria caché.")
@@ -211,7 +252,7 @@ if start_btn:
                         "files_used": routing_decision.selected_filenames
                     })
                 
-                time.sleep(0.5)
+                time.sleep(2)
 
             st.session_state.audit_results = results
             st.session_state.processing_complete = True
@@ -228,7 +269,7 @@ if start_btn:
 # 3. RESULTADOS
 if st.session_state.processing_complete:
     st.divider()
-    st.subheader("📊 Informe de Cumplimiento")
+    st.subheader("3. Informe de Cumplimiento")
     
     df = pd.DataFrame(st.session_state.audit_results)
     if not df.empty:
@@ -254,7 +295,9 @@ if st.session_state.processing_complete:
             estilo_estado = "OMITIDO"
             
         with st.expander(f"{icon}  **{res['id']}** | {estilo_estado}"):
-            st.markdown(f"**Requisito:** {res['requirement']}")
+            st.markdown(f"**Requisito:**")
+            st.markdown(res['requirement'])
             st.markdown("---")
-            st.markdown(f"**Dictamen:** {res['reasoning']}")
+            st.markdown(f"**Dictamen:**")
+            st.markdown(res['reasoning'])
             st.caption(f"📍 Evidencia: {res['evidence_location']} | 📂 Archivos: {', '.join(res['files_used'])}")
