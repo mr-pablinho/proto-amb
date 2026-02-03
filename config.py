@@ -12,9 +12,7 @@ MODEL_CATALOGER = "gemini-2.5-flash"
 MODEL_ROUTER = "gemini-2.5-flash"
 MODEL_AUDITOR = "gemini-2.5-pro"
 
-# --- NEW: INDIVIDUAL TEMPERATURES ---
-# 0.0 = Deterministic (Best for extraction/logic)
-# 1.0 = Creative
+# --- INDIVIDUAL TEMPERATURES ---
 TEMP_CATALOGER = 0.0
 TEMP_ROUTER = 0.0
 TEMP_AUDITOR = 0.0
@@ -27,5 +25,8 @@ DB_DIR = os.path.join(DATA_DIR, "db")
 INDEX_FILE = os.path.join(DATA_DIR, "project_index.json")
 CHECKLIST_FILE = os.path.join(DATA_DIR, "audit_checklist.json")
 
+# --- EXECUTION SETTINGS ---
 FORCE_REINDEX = False  
 RATE_LIMIT_CALLS = 20
+AUDIT_CHECKLIST_LIMIT = 4 
+RANDOM_SEED = 42

@@ -1,0 +1,16 @@
+[
+    {
+        "id": "REQ-001",
+        "chapter": "Ficha Técnica",
+        "requirement": "Se incluye una tabla con la información de la Ficha Técnica.",
+        "criteria": "La información del proyecto debe estar organizada en una tabla con los campos especificados en la sección 3.1 del documento.",
+        "expected_evidence": "Tabla con los campos y datos requeridos en el capítulo 3.1 del EsIA."
+    },
+    {
+        "id": "REQ-002",
+        "chapter": "Ficha Técnica",
+        "requirement": "Nombre del proyecto: Se especifica el nombre del proyecto.",
+        "criteria": "El campo \"Nombre del proyecto\" debe contener el nombre completo y oficial del proyecto.",
+        "expected_evidence": "Entrada en la tabla de la Ficha Técnica bajo el campo \"Nombre del proyecto\"."
+    }
+]

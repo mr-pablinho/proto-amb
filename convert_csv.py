@@ -3,8 +3,8 @@ import json
 import re
 
 # Input and Output filenames
-#INPUT_CSV = "./data/checklist/Checklist Borrador - Gemini 2.csv"
-INPUT_CSV = "./data/checklist/Checklist Borrador - Gemini 2.xlsx - check_reduced.csv"
+INPUT_CSV = "./data/checklist/Checklist Borrador - Gemini 2.csv"
+# INPUT_CSV = "./data/checklist/Checklist Borrador - Gemini 2.xlsx - check_reduced.csv"
 OUTPUT_JSON = "./data/audit_checklist.json"
 
 def convert_csv_to_json():
@@ -13,9 +13,9 @@ def convert_csv_to_json():
     # This variable will "remember" the last chapter seen
     current_chapter = ""
 
-    # Regex pattern to match numbering at the start (e.g., "3.1 ", "3.5.2 ")
+    # Regex pattern to match numbering at the start (e.g., "3.1 ", "3.5.2 ", "3.8.1.3. ")
     # Matches digits and dots followed by a space at the beginning of the string
-    numbering_pattern = r'^\d+(\.\d+)*\s+'
+    numbering_pattern = r'^\d+(\.\d+)*\.?\s+'
 
     try:
         with open(INPUT_CSV, mode='r', encoding='utf-8') as csvfile:

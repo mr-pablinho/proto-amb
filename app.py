@@ -5,6 +5,7 @@ import json
 import glob
 import time
 import pandas as pd
+import random
 
 # Importar módulos del proyecto
 import config
@@ -78,6 +79,8 @@ if "processing_complete" not in st.session_state:
     st.session_state.processing_complete = False
 if "temp_dir" not in st.session_state:
     st.session_state.temp_dir = tempfile.mkdtemp()
+if "total_time" not in st.session_state:
+    st.session_state.total_time = 0
 
 # --- FUNCIONES AUXILIARES ---
 
@@ -98,7 +101,16 @@ def load_checklist():
     json_path = config.CHECKLIST_FILE
     if os.path.exists(json_path):
         with open(json_path, "r", encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
+            
+            # Aplicar muestreo aleatorio si está configurado
+            if config.AUDIT_CHECKLIST_LIMIT and isinstance(config.AUDIT_CHECKLIST_LIMIT, int):
+                if config.AUDIT_CHECKLIST_LIMIT < len(data):
+                    random.seed(config.RANDOM_SEED)
+                    sampled_data = random.sample(data, config.AUDIT_CHECKLIST_LIMIT)
+                    # Ordenar por ID para mantener el orden ascendente original
+                    return sorted(sampled_data, key=lambda x: x['id'])
+            return data
     return []
 
 def load_local_cache():
@@ -112,10 +124,10 @@ def load_local_cache():
     return {}
 
 # --- INTERFAZ DE USUARIO ---
-
+sleep_time = 1
 # Encabezado
-st.title("🤖 MAATE AI (PoC)")
-st.subheader("**Sistema Automatizado de Verificación Normativa**")
+st.title("🤖 MAATE AI")
+st.markdown("**Sistema Automatizado de Verificación Normativa (PoC)**")
 
 # 1. CARGA DE ARCHIVOS
 st.divider()
@@ -139,9 +151,12 @@ if uploaded_files:
 st.divider()
 st.subheader("2. Proceso de Auditoría")
 
+force_reindex = st.toggle("Forzar re-indexación", value=False, help="Ignora la caché local y vuelve a analizar todos los documentos.")
 start_btn = st.button("Iniciar Verificación", type="primary", disabled=not uploaded_files)
 
+
 if start_btn:
+    start_time = time.time()
     # Preparación
     configure_genai()
     saved_paths = save_uploaded_files(uploaded_files)
@@ -152,131 +167,117 @@ if start_btn:
     auditor = AuditorAgent()
     rag = LegalRAG()
     
-    # Placeholder de Acción Actual
-    current_action_display = st.info("🚀 Iniciando protocolos del sistema...")
+    # Contenedores para Pasos (Persistentes)
+    step1_container = st.empty()
+    step2_container = st.empty()
+    step3_container = st.empty()
     
-    # Caja de Logs
-    with st.status("📝 Registro de Operaciones", expanded=True) as status_box:
+    try:
+        # --- PASO 1: MARCO LEGAL ---
+        with step1_container.container():
+            st.info("📚 Paso 1/3: Verificando Normativa Legal...")
+            with st.status("Detalles del Marco Legal", expanded=True) as s1:
+                if rag.collection.count() == 0:
+                    legal_files = glob.glob(os.path.join(config.LEGAL_DIR, "*.pdf"))
+                    for l_file in legal_files:
+                        st.write(f"Leyendo: {os.path.basename(l_file)}")
+                        txt = extract_text_from_pdf(l_file)
+                        rag.ingest_text(txt, source_name=os.path.basename(l_file))
+                st.write("✅ Marco legal cargado correctamente.")
+                s1.update(label="📚 Marco Legal Listo", state="complete", expanded=False)
         
-        try:
-            # A. MARCO LEGAL
-            current_action_display.info("📚 Paso 1/3: Verificando Normativa Legal...")
-            status_box.update(label="📚 Cargando contexto legal...", state="running")
-            time.sleep(2)
+        # --- PASO 2: CATALOGACIÓN ---
+        with step2_container.container():
+            st.info("🔍 Paso 2/3: Analizando estructura de documentos...")
+            with st.status("Detalles de Indexación", expanded=True) as s2:
+                local_cache = load_local_cache()
+                project_index = []
+                for pdf_path in saved_paths:
+                    fname = os.path.basename(pdf_path)
+                    st.write(f"Analizando: ```{fname}```")
+                    if fname in local_cache and not force_reindex:
+                        st.caption(f"└─ Recuperado de memoria caché.")
+                        project_index.append(local_cache[fname])
+                    else:
+                        f_index, _ = cataloger.analyze_file(pdf_path)
+                        if f_index:
+                            project_index.append(f_index.model_dump())
+                st.session_state.project_index = project_index
+                st.write(f"✅ Indexación terminada ({len(project_index)} archivos).")
+                s2.update(label="🔍 Documentos Indexados", state="complete", expanded=False)
 
-            if rag.collection.count() == 0:
-                legal_files = glob.glob(os.path.join(config.LEGAL_DIR, "*.pdf"))
-                for l_file in legal_files:
-                    st.write(f"Leyendo: {os.path.basename(l_file)}")
-                    txt = extract_text_from_pdf(l_file)
-                    rag.ingest_text(txt, source_name=os.path.basename(l_file))
-            st.write("✅ Marco legal cargado.")
-
-            # B. CATALOGACIÓN
-            current_action_display.info("🔍 Paso 2/3: Analizando estructura de documentos...")
-            status_box.update(label="🔍 Indexando documentos...", state="running")
-            
-            local_cache = load_local_cache()
-            project_index = []
-            
-            for pdf_path in saved_paths:
-                fname = os.path.basename(pdf_path)
-                st.write(f"Analizando: **{fname}**")
-                time.sleep(2)
-
-                if fname in local_cache:
-                    st.caption(f"└─ Recuperado de memoria caché.")
-                    project_index.append(local_cache[fname])
-                else:
-                    f_index, _ = cataloger.analyze_file(pdf_path)
-                    if f_index:
-                        project_index.append(f_index.model_dump())
-            
-            st.session_state.project_index = project_index
-            st.write(f"✅ Indexación terminada ({len(project_index)} archivos).")
-
-            # C. AUDITORÍA
-            current_action_display.info("⚖️ Paso 3/3: Cruzando requisitos contra evidencia...")
-            
-            checklist = load_checklist()
-            results = []
-            total = len(checklist)
-            
-            for i, item in enumerate(checklist):
-                req_id = item['id']
-                req_text = item['requirement']
-                criteria = item.get('criteria', 'N/A')
-                evidence_hint = item.get('expected_evidence', 'N/A')
-
-                status_box.update(label=f"⚖️ Auditando punto {i+1} de {total}: {req_id}", state="running")
-                st.markdown(f"**{req_id}:** {req_text[:60]}...")
+        # --- PASO 3: AUDITORÍA ---
+        with step3_container.container():
+            st.info("⚖️ Paso 3/3: Cruzando requisitos contra evidencia...")
+            with st.status("Detalles de la Auditoría", expanded=True) as s3:
+                checklist = load_checklist()
+                st.session_state.audit_results = []
+                total = len(checklist)
                 
-                # Router
-                search_query = f"{req_text} (Evidence needed: {evidence_hint})"
-                routing_decision, _ = router.route(search_query, project_index)
-                
-                if not routing_decision or not routing_decision.selected_filenames:
-                    st.caption("⚠️ Sin archivos relevantes.")
-                    results.append({
-                        "id": req_id, "requirement": req_text, "status": "SKIPPED",
-                        "reasoning": "No se encontraron documentos relacionados.",
-                        "evidence_location": "N/A", "files_used": []
-                    })
-                    continue
+                for i, item in enumerate(checklist):
+                    req_id = item['id']
+                    req_text = item['requirement']
+                    criteria = item.get('criteria', 'N/A')
+                    evidence_hint = item.get('expected_evidence', 'N/A')
 
-                # Preparar archivos
-                legal_context = rag.retrieve_context(req_text)
-                file_contents = {}
-                for fname in routing_decision.selected_filenames:
-                    path = os.path.join(st.session_state.temp_dir, fname)
-                    if os.path.exists(path):
-                        file_contents[fname] = extract_text_from_pdf(path)
-
-                if not file_contents:
-                    continue
-
-                # Auditor
-                rich_prompt = f"REQUIREMENT: {req_text}\nCRITERIA: {criteria}\nEVIDENCE: {evidence_hint}"
-                audit_result, _ = auditor.audit(rich_prompt, legal_context, file_contents)
-
-                if audit_result:
-                    icon = "✅" if audit_result.status == "CUMPLE" else "❌"
-                    st.caption(f"└─ Resultado: {icon} {audit_result.status}")
+                    s3.update(label=f"⚖️ Auditando {i+1}/{total}: {req_id}", state="running")
+                    st.markdown(f"**{req_id}:** {req_text[:60]}...")
                     
-                    results.append({
-                        "id": req_id,
-                        "requirement": req_text,
-                        "status": audit_result.status,
-                        "reasoning": audit_result.reasoning,
-                        "evidence_location": audit_result.evidence_location,
-                        "files_used": routing_decision.selected_filenames
-                    })
+                    search_query = f"{req_text} (Evidence needed: {evidence_hint})"
+                    routing_decision, _ = router.route(search_query, project_index)
+                    
+                    if not routing_decision or not routing_decision.selected_filenames:
+                        st.caption("⚠️ Sin archivos relevantes.")
+                        st.session_state.audit_results.append({
+                            "id": req_id, "requirement": req_text, "status": "SKIPPED",
+                            "reasoning": "No se encontraron documentos relacionados.",
+                            "evidence_location": "N/A", "files_used": []
+                        })
+                        continue
+
+                    legal_context = rag.retrieve_context(req_text)
+                    file_contents = {}
+                    for fname in routing_decision.selected_filenames:
+                        path = os.path.join(st.session_state.temp_dir, fname)
+                        if os.path.exists(path):
+                            file_contents[fname] = extract_text_from_pdf(path)
+
+                    if file_contents:
+                        rich_prompt = f"REQUIREMENT: {req_text}\nCRITERIA: {criteria}\nEVIDENCE: {evidence_hint}"
+                        audit_result, _ = auditor.audit(rich_prompt, legal_context, file_contents)
+
+                        if audit_result:
+                            icon = "✅" if audit_result.status == "CUMPLE" else "❌"
+                            st.caption(f"└─ Resultado: {icon} {audit_result.status}")
+                            st.session_state.audit_results.append({
+                                "id": req_id, "requirement": req_text, "status": audit_result.status,
+                                "reasoning": audit_result.reasoning,
+                                "evidence_location": audit_result.evidence_location,
+                                "files_used": routing_decision.selected_filenames
+                            })
                 
-                time.sleep(2)
+                st.session_state.total_time = time.time() - start_time
+                st.session_state.processing_complete = True
+                s3.update(label="⚖️ Auditoría Finalizada", state="complete", expanded=False)
+    except Exception as e:
+        st.error(f"Error crítico durante el proceso: {e}")
 
-            st.session_state.audit_results = results
-            st.session_state.processing_complete = True
-            
-            status_box.update(label="✅ Proceso completado. Despliegue para ver logs.", state="complete", expanded=False)
-            current_action_display.success("¡Auditoría Finalizada!")
-            time.sleep(2)
-            current_action_display.empty()
-
-        except Exception as e:
-            current_action_display.error(f"Error: {e}")
-            status_box.update(label="❌ Error crítico", state="error")
+    # Mensaje Final (Fuera de contenedores)
+    if st.session_state.processing_complete:
+        st.success("El proceso ha concluido con éxito")
 
 # 3. RESULTADOS
-if st.session_state.processing_complete:
+if st.session_state.audit_results:
     st.divider()
     st.subheader("3. Informe de Cumplimiento")
     
     df = pd.DataFrame(st.session_state.audit_results)
     if not df.empty:
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         col1.metric("Requisitos", len(df))
         col2.metric("Cumplimiento", len(df[df['status'] == 'CUMPLE']))
         col3.metric("No Conformidad", len(df[df['status'].isin(['NO CUMPLE', 'PARCIAL'])]))
+        col4.metric("Tiempo Total", f"{st.session_state.total_time:.1f}s")
     
     st.write("")
     
