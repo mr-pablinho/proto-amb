@@ -254,7 +254,7 @@ if start_btn:
                             },
                             auditor_data={
                                 'model': config.MODEL_AUDITOR,
-                                'input': 0, 'output': 0, 'status': "SKIPPED", 'reasoning': "N/A"
+                                'input': 0, 'output': 0, 'status': "SKIPPED", 'reasoning': "N/A", 'instruction': "N/A"
                             }
                         )
                         total_run_cost += cost
@@ -292,7 +292,8 @@ if start_btn:
                                     'input': auditor_usage.get('input_tokens', 0),
                                     'output': auditor_usage.get('output_tokens', 0),
                                     'status': audit_result.status,
-                                    'reasoning': audit_result.reasoning
+                                    'reasoning': audit_result.reasoning,
+                                    'instruction': audit_result.instruction
                                 }
                             )
                             total_run_cost += cost
@@ -301,6 +302,7 @@ if start_btn:
                             st.session_state.audit_results.append({
                                 "id": req_id, "requirement": req_text, "status": audit_result.status,
                                 "reasoning": audit_result.reasoning,
+                                "instruction": audit_result.instruction,
                                 "evidence_location": audit_result.evidence_location,
                                 "files_used": routing_decision.selected_filenames
                             })
@@ -374,4 +376,11 @@ if st.session_state.audit_results:
             st.markdown("---")
             st.markdown(f"**Dictamen:**")
             st.markdown(res['reasoning'])
+            
+            if res.get('instruction') and res['instruction'] != "Ninguna acción requerida" and res['instruction'] != "N/A":
+                st.markdown("---")
+                st.markdown("**Acción Requerida:**")
+                st.info(f"{res['instruction']}")
+
+            st.markdown("---")
             st.caption(f"📍 Evidencia: {res['evidence_location']} | 📂 Archivos: {', '.join(res['files_used'])}")

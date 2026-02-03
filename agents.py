@@ -183,12 +183,17 @@ class AuditorAgent(BaseAgent):
         **Constraint**: Verify if the technical evidence meets the legal threshold. 
         Output the AuditResult JSON. Reasoning must be in Spanish.
         
+        **Instruction Guidelines**:
+        - If status is "NO CUMPLE" or "PARCIAL", provide a single sentence in Spanish starting with an infinitive verb (e.g., "Incluir...", "Presentar...", "Corregir...") that tells the proponent what must be done to comply.
+        - If status is "CUMPLE", use "Ninguna acción requerida".
+
         Structure:
         {{
             "status": "CUMPLE" | "NO CUMPLE" | "PARCIAL",
             "reasoning": "...",
             "legal_base": "...",
-            "evidence_location": "..."
+            "evidence_location": "...",
+            "instruction": "..."
         }}
         """
         return self.generate_structured(prompt, AuditResult)

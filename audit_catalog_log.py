@@ -26,12 +26,12 @@ class AuditLogger:
             "Req_ID", "Requirement_Text", "Duration_Seconds",
             "Router_Model", "Router_Input_Tokens", "Router_Output_Tokens", "Router_Cost", "Router_Files", "Router_Reasoning",
             "Auditor_Model", "Auditor_Input_Tokens", "Auditor_Output_Tokens", "Auditor_Cost",
-            "Audit_Status", "Audit_Reasoning", "Total_Req_Cost"
+            "Audit_Status", "Audit_Reasoning", "Instruction", "Total_Req_Cost"
         ]
         
         self.headers_user = [
             "Req_ID", "Requirement_Text", "Duration_Seconds",
-            "Selected_Files", "Audit_Status", "Audit_Reasoning"
+            "Selected_Files", "Audit_Status", "Audit_Reasoning", "Instruction"
         ]
 
         # --- NEW HEADERS FOR CATALOG LOG ---
@@ -103,6 +103,7 @@ class AuditLogger:
             f"${a_cost:.6f}",
             auditor_data['status'],
             auditor_data['reasoning'],
+            auditor_data.get('instruction', 'N/A'),
             f"${total_cost:.6f}"
         ]
 
@@ -112,7 +113,8 @@ class AuditLogger:
             f"{duration:.2f}",
             router_data['files'],
             auditor_data['status'],
-            auditor_data['reasoning']
+            auditor_data['reasoning'],
+            auditor_data.get('instruction', 'N/A')
         ]
 
         with open(self.file_detailed, mode='a', newline='', encoding='utf-8') as f:

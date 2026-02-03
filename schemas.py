@@ -24,3 +24,4 @@ class AuditResult(BaseModel):
     reasoning: str = Field(description="Technical reasoning in Spanish.")
     legal_base: str = Field(description="The legal article used for verification.")
     evidence_location: str = Field(description="Where the evidence was found (Page/Section).")
+    instruction: str = Field(description="One-sentence corrective action starting with an infinitive verb (e.g. 'Incluir...'). Use 'Ninguna acción requerida' if status is CUMPLE.")

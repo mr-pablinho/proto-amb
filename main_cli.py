@@ -214,7 +214,7 @@ def main():
                 },
                 auditor_data={
                     'model': config.MODEL_AUDITOR,
-                    'input': 0, 'output': 0, 'status': "SKIPPED", 'reasoning': "N/A"
+                    'input': 0, 'output': 0, 'status': "SKIPPED", 'reasoning': "N/A", 'instruction': "N/A"
                 }
             )
             total_run_cost += req_cost
@@ -260,7 +260,8 @@ def main():
                 'input': auditor_usage.get('input_tokens', 0),
                 'output': auditor_usage.get('output_tokens', 0),
                 'status': audit_result.status,
-                'reasoning': audit_result.reasoning
+                'reasoning': audit_result.reasoning,
+                'instruction': audit_result.instruction
             }
         )
         total_run_cost += req_cost
@@ -268,10 +269,17 @@ def main():
         color = "green" if audit_result.status == "CUMPLE" else "red"
         if audit_result.status == "PARCIAL": color = "yellow"
         
-        console.print(Panel(
+        panel_content = (
             f"[bold]Status:[/bold] [{color}]{audit_result.status}[/{color}]\n"
             f"[bold]Evidence:[/bold] {audit_result.evidence_location}\n"
-            f"[italic]{audit_result.reasoning}[/italic]",
+            f"[italic]{audit_result.reasoning}[/italic]"
+        )
+        
+        if audit_result.instruction and audit_result.instruction != "Ninguna acción requerida":
+            panel_content += f"\n\n[bold white on blue] ACCIÓN REQUERIDA [/bold white on blue] [cyan]{audit_result.instruction}[/cyan]"
+
+        console.print(Panel(
+            panel_content,
             title=f"Result {req_id} ({req_duration:.1f}s)", border_style=color
         ))
         console.print("\n")
