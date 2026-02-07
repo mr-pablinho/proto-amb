@@ -20,7 +20,7 @@ class RoutingDecision(BaseModel):
 
 class AuditResult(BaseModel):
     """Output from the Auditor Agent."""
-    status: str = Field(description="CUMPLE, NO CUMPLE, or PARCIAL")
+    status: str = Field(description="CUMPLE or NO CUMPLE")
     reasoning: str = Field(description="Technical reasoning in Spanish.")
     legal_base: str = Field(description="The legal article used for verification.")
     evidence_location: str = Field(description="Where the evidence was found (Page/Section).")

@@ -141,7 +141,7 @@ def main():
     run_start_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     total_run_cost = 0.0 # Track overall money spent
     
-    console.rule("[bold green]MAATE AI: Auditor Ambiental[/bold green]")
+    console.rule("[bold green]Tucana: Auditor Ambiental[/bold green]")
     
     eia_folder = get_eia_folder_input()
     config.PDF_DIR = eia_folder 
@@ -267,7 +267,7 @@ def main():
         total_run_cost += req_cost
 
         color = "green" if audit_result.status == "CUMPLE" else "red"
-        if audit_result.status == "PARCIAL": color = "yellow"
+
         
         panel_content = (
             f"[bold]Status:[/bold] [{color}]{audit_result.status}[/{color}]\n"

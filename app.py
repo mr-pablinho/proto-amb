@@ -16,7 +16,7 @@ from logger import AuditLogger
 
 # --- CONFIGURACIÓN & SETUP ---
 st.set_page_config(
-    page_title="🤖 MAATE AI",
+    page_title="🦡 COATÍ",
     layout="centered"
 )
 
@@ -127,7 +127,7 @@ def load_local_cache():
 # --- INTERFAZ DE USUARIO ---
 sleep_time = 1
 # Encabezado
-st.title("🤖 MAATE AI")
+st.title("🦡 COATÍ")
 st.markdown("**Sistema Automatizado de Verificación Normativa (PoC)**")
 
 # 1. CARGA DE ARCHIVOS
@@ -351,7 +351,7 @@ if st.session_state.audit_results:
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Requisitos", len(df))
         col2.metric("Cumplimiento", len(df[df['status'] == 'CUMPLE']))
-        col3.metric("No Conformidad", len(df[df['status'].isin(['NO CUMPLE', 'PARCIAL'])]))
+        col3.metric("No Conformidad", len(df[df['status'] == 'NO CUMPLE']))
         col4.metric("Tiempo Total", f"{st.session_state.total_time:.1f}s")
     
     st.write("")
@@ -364,8 +364,7 @@ if st.session_state.audit_results:
             icon = "✅"
         elif res['status'] == "NO CUMPLE": 
             icon = "❌"
-        elif res['status'] == "PARCIAL": 
-            icon = "⚠️"
+
         elif res['status'] == "SKIPPED":
             icon = "⏭️"
             estilo_estado = "OMITIDO"

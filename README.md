@@ -1,6 +1,6 @@
-# MAATE AI: Auditor Ambiental (PoC)
+# Tucana: Auditor Ambiental (PoC)
 
-**MAATE AI** is a high-precision, terminal-based AI agent designed to automate the compliance review of complex Environmental Impact Studies (EIA) for the Ministry of Environment in Ecuador (MAATE).
+**Tucana** is a high-precision, terminal-based AI agent designed to automate the compliance review of complex Environmental Impact Studies (EIA) for the Ministry of Environment in Ecuador (MAATE).
 
 It uses a "Content-First" architecture to ignore generic filenames and index the actual content of PDF files, allowing it to find specific tables, maps, and plans buried in large documentation sets.
 
@@ -44,8 +44,8 @@ It uses a "Content-First" architecture to ignore generic filenames and index the
 
 1. **Clone the repository**:
 ```bash
-git clone [https://github.com/your-username/maate-ai.git](https://github.com/your-username/maate-ai.git)
-cd maate-ai
+git clone [https://github.com/your-username/tucana.git](https://github.com/your-username/tucana.git)
+cd tucana
 
 ```
 
